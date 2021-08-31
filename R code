@@ -1,0 +1,37 @@
+library(beem)
+library(tidyverse)
+library(magrittr)
+library(reshape2)
+
+## LOAD METADATA AND COUNTS DATA FROM YOUR FILE
+meta.control <- read.table('C:\\Users\\45362297\\Desktop\\data\\Chenhao results\\Chenhao BEEM input data\\metadata_control.txt', head=T, stringsAsFactors = F)
+dat <- t(read.table('C:\\Users\\45362297\\Desktop\\data\\Chenhao results\\Chenhao BEEM input data\\all_controls_genus.txt', head=T, row.names = 1))
+
+dat <- dat[, meta.control$measurementID!=0]
+meta.control <- meta.control[meta.control$measurementID!=0,]
+
+## Filter by prevalence, kept top ~10 genera
+fil <- rowSums(dat > 0)>12
+table(fil)
+dat.fil <- dat[fil, ]
+## make names shorter
+row.names(dat.fil) %<>% str_replace('.*o__[^.]+.', '')
+
+## run beem
+res <- EM(dat.fil, meta.control, ncpu=2, useSpline = T)
+
+biomass <- biomassFromEM(res, forceSkipWarning = T) ## force skip the fitting assertion
+
+## read biomass
+biomass.true <- read.table('concentration_case_control.txt', sep='\t', row.names = 1, head=TRUE)
+biomass.true.control <- biomass.true[meta.control$sampleID, ]
+
+biomass.true.control <- biomass.true.control / median(biomass.true.control) * 1000 ## scale true biomass such the scale is not too different from BEEM used
+
+## PLOT DIFFERENCE GRAPHS
+data.frame(meta.control, beem=biomass, measure=biomass.true.control) %>% 
+    select(-sampleID, -isIncluded) %>% 
+    melt(measure.vars=c('beem', 'measure')) %>% 
+    ggplot(aes(x=measurementID, y=value, color=variable)) + 
+    geom_line() + geom_point() + 
+    facet_wrap(~subjectID)
